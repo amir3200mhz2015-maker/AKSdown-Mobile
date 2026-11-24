@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -62,13 +65,16 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
     val items by vm.history.collectAsState()
     val current = s.currentId?.let { id -> items.firstOrNull { it.id == id } }
     val ctx = LocalContext.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val hideKeyboard = { focus.clearFocus(); keyboard?.hide() }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Image(painterResource(R.drawable.ic_logo), null, Modifier.size(50.dp))
+            Image(painterResource(R.drawable.ic_logo), null, Modifier.size(46.dp))
             Column {
                 Text("AKSdown", style = MaterialTheme.typography.headlineSmall)
                 Text(stringResource(R.string.subtitle), color = Aks.Muted, style = MaterialTheme.typography.bodyMedium)
@@ -85,9 +91,10 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
                     // Links are always left-to-right, even in Arabic/Hebrew layouts.
                     textStyle = TextStyle(fontSize = 16.sp, textDirection = TextDirection.Ltr, color = Aks.Ink),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { hideKeyboard() }),
                     shape = RoundedCornerShape(16.dp),
                     trailingIcon = {
-                        if (s.input.isNotEmpty()) IconButton(onClick = vm::clear) {
+                        if (s.input.isNotEmpty()) IconButton(onClick = { vm.clear(); hideKeyboard() }) {
                             Icon(Icons.Filled.Close, stringResource(R.string.clear), tint = Aks.Muted)
                         }
                     },
@@ -98,7 +105,8 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
                 )
                 FilledTonalButton(
                     onClick = {
-                        // Clipboard is read ONLY here, when the user presses PASTE.
+                        // Clipboard is read ONLY here, when the user presses PASTE. No keyboard needed.
+                        hideKeyboard()
                         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString()
                         if (text.isNullOrBlank()) vm.onClipboardEmpty() else vm.onInput(text)
@@ -135,13 +143,87 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
             }
         }
 
-        when (current?.status) {
-            Status.QUEUED, Status.RUNNING -> ProgressPanel(current, onCancel = vm::cancelCurrent)
-            Status.DONE -> DonePanel(current, onAgain = vm::clear)
-            Status.FAILED -> FailedPanel(current, onRetry = { vm.retry(current.id) })
-            else -> DownloadButton(enabled = s.url != null, onClick = onDownload)
+        Spacer(Modifier.weight(1f))
+        StatusLine(current)
+        ActionButton(
+            item = current, canDownload = s.url != null,
+            onDownload = { hideKeyboard(); onDownload() },
+            onCancel = vm::cancelCurrent,
+            onRetry = { current?.let { vm.retry(it.id) } },
+            onDone = { vm.clear(); hideKeyboard() },
+        )
+    }
+}
+
+/** One fixed-height line above the button: saved file name, or the reason a download failed. */
+@Composable
+private fun StatusLine(item: DownloadItem?) {
+    val ctx = LocalContext.current
+    Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
+        when (item?.status) {
+            Status.DONE -> Text(
+                listOfNotNull(item.fileName, item.resolution).joinToString(" · "),
+                color = Aks.Ok, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center, modifier = Modifier.clickable { FileActions.open(ctx, item) }
+            )
+            Status.FAILED -> Text(
+                stringResource(errorRes(item.errorKey)), color = Aks.Bad, style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            )
+            Status.QUEUED, Status.RUNNING -> Text(
+                stageText(item), color = Aks.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+            )
+            else -> {}
         }
-        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** The big button changes in place: DOWNLOAD → progress (with cancel) → ✓ Done / Retry. */
+@Composable
+private fun ActionButton(
+    item: DownloadItem?, canDownload: Boolean,
+    onDownload: () -> Unit, onCancel: () -> Unit, onRetry: () -> Unit, onDone: () -> Unit,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val mod = Modifier.fillMaxWidth().height(64.dp)
+    when (item?.status) {
+        Status.QUEUED, Status.RUNNING -> {
+            val downloading = item.stage == Stage.DOWNLOADING
+            val anim by animateFloatAsState(if (downloading) item.progress else 1f, label = "p")
+            Box(mod.clip(shape).background(Aks.Card2)) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(anim.coerceIn(0.02f, 1f))
+                    .background(if (downloading) Aks.Blue else Aks.Blue.copy(alpha = .45f)))
+                Row(Modifier.fillMaxSize().padding(start = 18.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (downloading) "${(item.progress * 100).toInt()}%" else stageText(item),
+                            color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        val speed = item.speed
+                        if (downloading && speed != null) Text(
+                            if (item.etaSec > 0) stringResource(R.string.speed_eta, speed, UrlTools.formatEta(item.etaSec)) else speed,
+                            color = Color.White.copy(alpha = .85f), fontSize = 12.sp, maxLines = 1
+                        )
+                    }
+                    IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, stringResource(R.string.cancel), tint = Color.White) }
+                }
+            }
+        }
+        Status.DONE -> {
+            var shown by remember(item.id) { mutableStateOf(false) }
+            LaunchedEffect(item.id) { shown = true }
+            val sc by animateFloatAsState(if (shown) 1f else 0.85f, spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "ok")
+            Button(onClick = onDone, modifier = mod.scale(sc), shape = shape,
+                colors = ButtonDefaults.buttonColors(containerColor = Aks.Ok, contentColor = Color.White)) {
+                Icon(Icons.Filled.Check, null, Modifier.size(24.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.done_short), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Status.FAILED -> Button(onClick = onRetry, modifier = mod, shape = shape,
+            colors = ButtonDefaults.buttonColors(containerColor = Aks.Blue)) {
+            Icon(Icons.Filled.Refresh, null); Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.retry), fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        }
+        else -> DownloadButton(enabled = canDownload, onClick = onDownload)
     }
 }
 
@@ -158,9 +240,9 @@ fun AksCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -
 private fun Preview(s: HomeState, onRetry: () -> Unit) {
     val p = s.platform ?: Platform.OTHER
     Column {
-        HorizontalDivider(Modifier.padding(vertical = 14.dp), color = Aks.Line)
+        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Aks.Line)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Thumb(s.meta?.thumbnail, p, s.format, UrlTools.formatDuration(s.meta?.durationSec), Modifier.width(128.dp))
+            Thumb(s.meta?.thumbnail, p, s.format, UrlTools.formatDuration(s.meta?.durationSec), Modifier.width(116.dp))
             Column(Modifier.weight(1f)) {
                 PlatformBadge(p)
                 Spacer(Modifier.height(6.dp))
@@ -170,7 +252,7 @@ private fun Preview(s: HomeState, onRetry: () -> Unit) {
                         Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.fetching), color = Aks.Muted, style = MaterialTheme.typography.bodyMedium)
                     }
                     s.meta != null -> {
-                        Text(s.meta.title ?: s.url ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(s.meta.title ?: s.url ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         val sub = listOfNotNull(s.meta.uploader, s.meta.maxHeight?.let { "${it}p" }.takeIf { s.format == Format.MP4 }).joinToString(" · ")
                         if (sub.isNotEmpty()) Text(sub, color = Aks.Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -217,7 +299,7 @@ fun Thumb(url: String?, p: Platform, f: Format, duration: String, modifier: Modi
 private fun FormatButton(title: String, sub: String, icon: Int, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val border by animateFloatAsState(if (selected) 1f else 0f, label = "fmt")
     Column(
-        modifier.height(92.dp).clip(RoundedCornerShape(20.dp))
+        modifier.height(84.dp).clip(RoundedCornerShape(20.dp))
             .background(if (selected) Aks.Blue.copy(alpha = .14f) else Aks.Card)
             .border(2.dp, if (border > .5f) Aks.Blue else Aks.Line, RoundedCornerShape(20.dp))
             .clickable(onClick = onClick),
@@ -232,7 +314,7 @@ private fun FormatButton(title: String, sub: String, icon: Int, selected: Boolea
 @Composable
 private fun DownloadButton(enabled: Boolean, onClick: () -> Unit) {
     Button(
-        onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(62.dp),
+        onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().height(64.dp),
         shape = RoundedCornerShape(20.dp),
         colors = ButtonDefaults.buttonColors(containerColor = Aks.Blue, disabledContainerColor = Aks.Blue.copy(alpha = .35f), disabledContentColor = Color.White.copy(alpha = .6f)),
     ) {
@@ -250,89 +332,4 @@ fun stageText(item: DownloadItem): String = when {
     item.stage == Stage.PROCESSING -> stringResource(R.string.processing)
     item.stage == Stage.SAVING -> stringResource(R.string.saving)
     else -> stringResource(R.string.downloading)
-}
-
-@Composable
-private fun ProgressPanel(item: DownloadItem, onCancel: () -> Unit) {
-    val anim by animateFloatAsState(item.progress, label = "p")
-    AksCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stageText(item), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            if (item.stage == Stage.DOWNLOADING) Text("${(item.progress * 100).toInt()}%", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Aks.Blue2)
-        }
-        Spacer(Modifier.height(10.dp))
-        if (item.stage == Stage.DOWNLOADING) LinearProgressIndicator(
-            progress = { anim }, modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(99.dp)),
-            color = Aks.Blue2, trackColor = Aks.Card2, drawStopIndicator = {}, gapSize = 0.dp,
-        ) else LinearProgressIndicator(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(99.dp)), color = Aks.Blue2, trackColor = Aks.Card2)
-        val speed = item.speed
-        if (item.stage == Stage.DOWNLOADING && speed != null) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                if (item.etaSec > 0) stringResource(R.string.speed_eta, speed, UrlTools.formatEta(item.etaSec)) else speed,
-                color = Aks.Muted, style = MaterialTheme.typography.bodyMedium
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(16.dp)) {
-            Icon(Icons.Filled.Close, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.cancel))
-        }
-    }
-}
-
-@Composable
-private fun DonePanel(item: DownloadItem, onAgain: () -> Unit) {
-    var shown by remember(item.id) { mutableStateOf(false) }
-    LaunchedEffect(item.id) { shown = true }
-    val sc by animateFloatAsState(if (shown) 1f else 0.3f, spring(dampingRatio = Spring.DampingRatioMediumBouncy), label = "ok")
-    val ctx = LocalContext.current
-    AksCard {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(72.dp).scale(sc).clip(CircleShape).background(Aks.Ok.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(52.dp).clip(CircleShape).background(Aks.Ok), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(30.dp))
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(stringResource(R.string.done), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-            Text(
-                listOfNotNull(item.fileName, item.resolution, UrlTools.formatBytes(item.sizeBytes).ifEmpty { null }).joinToString(" · "),
-                color = Aks.Muted, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = { FileActions.open(ctx, item) }, shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Aks.Blue)) { Text(stringResource(R.string.play)) }
-                OutlinedButton(onClick = { FileActions.share(ctx, item) }, shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).height(48.dp)) {
-                    Text(stringResource(R.string.share))
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            TextButton(onClick = onAgain) { Text(stringResource(R.string.download), color = Aks.Blue2) }
-        }
-    }
-}
-
-@Composable
-private fun FailedPanel(item: DownloadItem, onRetry: () -> Unit) {
-    var details by remember { mutableStateOf(false) }
-    AksCard {
-        Row(verticalAlignment = Alignment.Top) {
-            Icon(Icons.Filled.Warning, null, tint = Aks.Bad, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.failed), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(errorRes(item.errorKey)), color = Aks.Muted, style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        if (!item.errorDetail.isNullOrBlank()) {
-            TextButton(onClick = { details = !details }) { Text(stringResource(R.string.details), color = Aks.Muted) }
-            if (details) Text(item.errorDetail.takeLast(800), color = Aks.Muted, fontSize = 11.sp, style = TextStyle(textDirection = TextDirection.Ltr))
-        }
-        Spacer(Modifier.height(8.dp))
-        Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Aks.Blue)) {
-            Icon(Icons.Filled.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.retry))
-        }
-    }
 }

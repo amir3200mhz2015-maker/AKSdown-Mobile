@@ -15,6 +15,7 @@ S = {
 "download": ("DOWNLOAD","تنزيل","הורדה"),
 "cancel": ("Cancel","إلغاء","ביטול"),
 "retry": ("Retry","إعادة المحاولة","ניסיון חוזר"),
+"done_short": ("Done","تم","בוצע"),
 "fetching": ("Getting video info…","جارٍ جلب معلومات الفيديو…","מאחזר פרטי סרטון…"),
 "preparing": ("Preparing engine…","جارٍ تجهيز المحرّك…","מכין את המנוע…"),
 "queued": ("Waiting in queue","في قائمة الانتظار","ממתין בתור"),

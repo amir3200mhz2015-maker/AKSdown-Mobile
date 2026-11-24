@@ -12,6 +12,7 @@
     <string name="download">تنزيل</string>
     <string name="cancel">إلغاء</string>
     <string name="retry">إعادة المحاولة</string>
+    <string name="done_short">تم</string>
     <string name="fetching">جارٍ جلب معلومات الفيديو…</string>
     <string name="preparing">جارٍ تجهيز المحرّك…</string>
     <string name="queued">في قائمة الانتظار</string>

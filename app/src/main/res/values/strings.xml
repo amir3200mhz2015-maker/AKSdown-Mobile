@@ -13,6 +13,7 @@
     <string name="download">DOWNLOAD</string>
     <string name="cancel">Cancel</string>
     <string name="retry">Retry</string>
+    <string name="done_short">Done</string>
     <string name="fetching">Getting video info…</string>
     <string name="preparing">Preparing engine…</string>
     <string name="queued">Waiting in queue</string>

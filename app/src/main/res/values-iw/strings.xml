@@ -12,6 +12,7 @@
     <string name="download">הורדה</string>
     <string name="cancel">ביטול</string>
     <string name="retry">ניסיון חוזר</string>
+    <string name="done_short">בוצע</string>
     <string name="fetching">מאחזר פרטי סרטון…</string>
     <string name="preparing">מכין את המנוע…</string>
     <string name="queued">ממתין בתור</string>
