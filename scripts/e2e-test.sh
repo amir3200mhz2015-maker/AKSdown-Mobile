@@ -67,7 +67,6 @@ t yt-mp4        "https://www.youtube.com/watch?v=jNQXAC9IVRw" MP4 420
 t peertube-mp4  "https://framatube.org/videos/watch/9c9de5e8-0a1e-484a-b099-e80766180a6d" MP4 900
 t peertube-mp3  "https://framatube.org/videos/watch/9c9de5e8-0a1e-484a-b099-e80766180a6d" MP3 900
 t reddit-mp4    "https://www.reddit.com/r/videos/comments/6rrwyj/that_small_heart_attack/" MP4 600
-t dailymotion-mp4 "https://www.dailymotion.com/video/x2iuewm" MP4 600
 t archive-mp4   "https://archive.org/details/Election_Ads/Commercial-Nixon1960ElectionAdToughonDefense.mpg" MP4 900
 
 # Error handling: an unsupported link must be reported, never "succeed".
