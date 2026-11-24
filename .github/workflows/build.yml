@@ -1,0 +1,126 @@
+name: Build AKSdown APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Signed release APK (arm64-v8a)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install build tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build file
+
+      - name: Fetch and verify yt-dlp
+        run: scripts/fetch-engine.sh
+
+      - name: Build QuickJS-NG for Android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: scripts/build-quickjs.sh arm64-v8a
+
+      - name: Restore signing key
+        env:
+          KS_B64: ${{ secrets.AKS_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then echo "::error::Signing secret AKS_KEYSTORE_B64 is missing"; exit 1; fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/aks.jks"
+          echo "AKS_KEYSTORE=$RUNNER_TEMP/aks.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed release
+        env:
+          AKS_KEYSTORE_PASSWORD: ${{ secrets.AKS_KEYSTORE_PASSWORD }}
+          AKS_KEY_ALIAS: ${{ secrets.AKS_KEY_ALIAS }}
+          AKS_KEY_PASSWORD: ${{ secrets.AKS_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify signature and contents
+        run: |
+          set -e
+          APK=app/build/outputs/apk/release/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee apk-verify.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$APK" > /dev/null && echo "zipalign OK" | tee -a apk-verify.txt
+          "$BT/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion|targetSdkVersion|native-code|application-label:" | tee -a apk-verify.txt
+          unzip -l "$APK" | grep -E "lib/arm64-v8a/|res/raw/ytdlp|ytdlp" | tee -a apk-verify.txt
+          for f in libpython.so libpython.zip.so libffmpeg.so libffmpeg.zip.so libffprobe.so libqjs.so; do
+            unzip -l "$APK" | grep -q "lib/arm64-v8a/$f" || { echo "MISSING $f"; exit 1; }
+          done
+          mkdir -p out && cp "$APK" out/AKSdown.apk
+          sha256sum out/AKSdown.apk | tee -a apk-verify.txt
+          cp apk-verify.txt out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AKSdown-release
+          path: out/
+          retention-days: 30
+
+  e2e:
+    name: Emulator test with real downloads
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build file ffmpeg python3
+      - run: scripts/fetch-engine.sh
+      - name: Build QuickJS-NG (x86_64 for the emulator)
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        run: scripts/build-quickjs.sh x86_64,arm64-v8a
+      - name: Build debug APK with emulator ABI
+        run: ./gradlew --no-daemon :app:assembleDebug -Paks.abis=x86_64,arm64-v8a
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Host check of automatic quality selection (same yt-dlp build and options)
+        continue-on-error: true
+        run: python3 -I scripts/quality-check.py app/src/main/res/raw/ytdlp | tee quality-check.txt
+      - name: Run emulator tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disk-size: 6000M
+          ram-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash scripts/e2e-test.sh app/build/outputs/apk/debug/app-debug.apk e2e-results
+      - name: Collect results
+        if: always()
+        run: mkdir -p e2e-results && cp -f quality-check.txt e2e-results/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AKSdown-test-results
+          path: e2e-results/
+          retention-days: 30

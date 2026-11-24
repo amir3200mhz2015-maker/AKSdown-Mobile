@@ -1,0 +1,20 @@
+AKSdown Mobile bundles the following open-source components. They run only on your device.
+
+yt-dlp 2026.11.23 — The Unlicense (public domain). https://github.com/yt-dlp/yt-dlp
+  Includes yt-dlp-ejs (Unlicense) which bundles astring (MIT) and meriyah (ISC).
+
+youtubedl-android 0.17.2 — GPL-3.0. https://github.com/JunkFood02/youtubedl-android
+  Provides the Android builds of:
+  • CPython 3.11 — Python Software Foundation License.
+  • FFmpeg / FFprobe — LGPL-2.1+ / GPL (build dependent). https://ffmpeg.org
+  • OpenSSL — Apache-2.0. • zlib — zlib license. • libc++ — Apache-2.0 with LLVM exception.
+  • Mutagen — GPL-2.0+. • pycryptodomex — BSD / public domain. • certifi — MPL-2.0.
+
+QuickJS-NG v0.18.0 — MIT. https://github.com/quickjs-ng/quickjs
+
+AndroidX, Jetpack Compose, Material 3, Kotlin, kotlinx.coroutines — Apache-2.0.
+Coil 2.7.0 — Apache-2.0.
+Apache Commons IO, Jackson — Apache-2.0.
+
+Because youtubedl-android is licensed under GPL-3.0, AKSdown Mobile as a whole is distributed
+under GPL-3.0. The complete source code is in the AKSdown-Mobile project folder.
