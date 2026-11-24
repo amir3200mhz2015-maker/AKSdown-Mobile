@@ -80,7 +80,7 @@ object Engine {
             addOption("--skip-download")
         }
         val out = try {
-            YoutubeDL.getInstance().execute(req, "info-${url.hashCode()}", null).out
+            YoutubeDL.getInstance().execute(req, "info-" + java.util.UUID.randomUUID(), null).out
         } catch (e: YoutubeDL.CanceledException) {
             throw EngineError("canceled")
         } catch (e: Exception) {
