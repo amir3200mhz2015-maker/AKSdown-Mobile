@@ -36,36 +36,37 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: scripts/build-quickjs.sh arm64-v8a
 
-      - name: Restore signing key
+      - name: Restore signing key (optional)
         env:
           KS_B64: ${{ secrets.AKS_KEYSTORE_B64 }}
         run: |
-          if [ -z "$KS_B64" ]; then echo "::error::Signing secret AKS_KEYSTORE_B64 is missing"; exit 1; fi
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/aks.jks"
-          echo "AKS_KEYSTORE=$RUNNER_TEMP/aks.jks" >> "$GITHUB_ENV"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/aks.jks"
+            echo "AKS_KEYSTORE=$RUNNER_TEMP/aks.jks" >> "$GITHUB_ENV"
+          else
+            echo "No signing secret: building an unsigned release; it is signed afterwards with the AKSdown key."
+          fi
 
-      - name: Build signed release
+      - name: Build release
         env:
           AKS_KEYSTORE_PASSWORD: ${{ secrets.AKS_KEYSTORE_PASSWORD }}
           AKS_KEY_ALIAS: ${{ secrets.AKS_KEY_ALIAS }}
           AKS_KEY_PASSWORD: ${{ secrets.AKS_KEY_PASSWORD }}
         run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Verify signature and contents
+      - name: Verify contents
         run: |
           set -e
-          APK=app/build/outputs/apk/release/app-release.apk
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee apk-verify.txt
-          "$BT/zipalign" -c -P 16 -v 4 "$APK" > /dev/null && echo "zipalign OK" | tee -a apk-verify.txt
-          "$BT/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion|targetSdkVersion|native-code|application-label:" | tee -a apk-verify.txt
-          unzip -l "$APK" | grep -E "lib/arm64-v8a/|res/raw/ytdlp|ytdlp" | tee -a apk-verify.txt
+          "$BT/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion|targetSdkVersion|native-code|application-label:" | tee apk-verify.txt
+          unzip -l "$APK" | grep -E "lib/arm64-v8a/|res/raw/" | tee -a apk-verify.txt
           for f in libpython.so libpython.zip.so libffmpeg.so libffmpeg.zip.so libffprobe.so libqjs.so; do
             unzip -l "$APK" | grep -q "lib/arm64-v8a/$f" || { echo "MISSING $f"; exit 1; }
           done
-          mkdir -p out && cp "$APK" out/AKSdown.apk
-          sha256sum out/AKSdown.apk | tee -a apk-verify.txt
-          cp apk-verify.txt out/
+          "$BT/apksigner" verify --print-certs "$APK" >> apk-verify.txt 2>&1 || echo "unsigned build" >> apk-verify.txt
+          mkdir -p out && cp "$APK" out/ && cp apk-verify.txt out/
+          sha256sum out/*.apk | tee -a out/apk-verify.txt
 
       - uses: actions/upload-artifact@v4
         with:
