@@ -50,7 +50,11 @@ class History(ctx: Context) {
     private fun load(): List<DownloadItem> = runCatching {
         if (!file.exists()) return emptyList()
         val arr = JSONArray(file.readText())
-        (0 until arr.length()).map { DownloadItem.fromJson(arr.getJSONObject(it)) }
+        (0 until arr.length()).map { DownloadItem.fromJson(arr.getJSONObject(it)) }.map {
+            // On app start nothing is running yet: a download interrupted when the app was closed
+            // is shown as failed (network interruption) so the user can press Retry to resume it.
+            if (it.status == Status.RUNNING || it.status == Status.QUEUED) it.copy(status = Status.FAILED, errorKey = "err_network") else it
+        }
     }.getOrDefault(emptyList())
 
     private fun persist(list: List<DownloadItem>) = synchronized(lock) {

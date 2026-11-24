@@ -33,10 +33,8 @@ data class DownloadItem(
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("url", url); put("format", format.name); put("platform", platform)
         putOpt("title", title); putOpt("thumbnail", thumbnail); putOpt("durationSec", durationSec)
-        // A download interrupted by process death is persisted as failed so the user can retry it.
-        val persistedStatus = if (status == Status.RUNNING || status == Status.QUEUED) Status.FAILED else status
-        put("status", persistedStatus.name)
-        putOpt("errorKey", if (persistedStatus != status) "err_network" else errorKey)
+        put("status", status.name)
+        putOpt("errorKey", errorKey)
         putOpt("errorDetail", errorDetail)
         putOpt("uri", uri); putOpt("filePath", filePath); putOpt("fileName", fileName)
         put("sizeBytes", sizeBytes); putOpt("resolution", resolution)

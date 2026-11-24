@@ -48,8 +48,8 @@ jobs:
       - name: Build release
         env:
           AKS_KEYSTORE_PASSWORD: ${{ secrets.AKS_KEYSTORE_PASSWORD }}
-          AKS_KEY_ALIAS: ${{ secrets.AKS_KEY_ALIAS }}
-          AKS_KEY_PASSWORD: ${{ secrets.AKS_KEY_PASSWORD }}
+          AKS_KEY_ALIAS: aksdown
+          AKS_KEY_PASSWORD: ${{ secrets.AKS_KEYSTORE_PASSWORD }}
         run: ./gradlew --no-daemon --stacktrace :app:assembleRelease
 
       - name: Verify contents
@@ -62,8 +62,15 @@ jobs:
           for f in libpython.so libpython.zip.so libffmpeg.so libffmpeg.zip.so libffprobe.so libqjs.so; do
             unzip -l "$APK" | grep -q "lib/arm64-v8a/$f" || { echo "MISSING $f"; exit 1; }
           done
-          "$BT/apksigner" verify --print-certs "$APK" >> apk-verify.txt 2>&1 || echo "unsigned build" >> apk-verify.txt
-          mkdir -p out && cp "$APK" out/ && cp apk-verify.txt out/
+          mkdir -p out
+          if "$BT/apksigner" verify --verbose --print-certs "$APK" >> apk-verify.txt 2>&1; then
+            "$BT/zipalign" -c -P 16 4 "$APK" && echo "zipalign: OK" >> apk-verify.txt
+            cp "$APK" out/AKSdown.apk
+          else
+            echo "UNSIGNED build (add the AKS_KEYSTORE_B64 and AKS_KEYSTORE_PASSWORD secrets)" >> apk-verify.txt
+            cp "$APK" out/
+          fi
+          cp apk-verify.txt out/
           sha256sum out/*.apk | tee -a out/apk-verify.txt
 
       - name: Publish build as a GitHub release (private to this repository)
