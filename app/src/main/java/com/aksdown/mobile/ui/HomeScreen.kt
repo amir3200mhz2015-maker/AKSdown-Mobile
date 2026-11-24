@@ -71,8 +71,12 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
 
     Column(
         Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+      // Everything above the button. It only scrolls on very small screens, so the button is always visible.
+      Column(
+        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+      ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Image(painterResource(R.drawable.ic_logo), null, Modifier.size(46.dp))
             Column {
@@ -111,7 +115,7 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
                         val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString()
                         if (text.isNullOrBlank()) vm.onClipboardEmpty() else vm.onInput(text)
                     },
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = Aks.Card2, contentColor = Aks.Ink),
                 ) {
                     Icon(painterResource(R.drawable.ic_paste), null, Modifier.size(18.dp))
@@ -143,7 +147,7 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.weight(1f))
+      }
         StatusLine(current)
         ActionButton(
             item = current, canDownload = s.url != null,
@@ -159,7 +163,7 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
 @Composable
 private fun StatusLine(item: DownloadItem?) {
     val ctx = LocalContext.current
-    Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().height(36.dp), contentAlignment = Alignment.Center) {
         when (item?.status) {
             Status.DONE -> Text(
                 listOfNotNull(item.fileName, item.resolution).joinToString(" · "),
