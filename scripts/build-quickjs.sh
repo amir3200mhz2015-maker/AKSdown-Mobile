@@ -5,7 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source engine/versions.env
+ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}"
 : "${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME}"
+echo "Using NDK $ANDROID_NDK_HOME"
 ABIS="${1:-arm64-v8a}"
 src=build/quickjs-src
 if [ ! -d "$src" ]; then
