@@ -86,10 +86,11 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
         }
 
         AksCard {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Read-only: links arrive by PASTE or Share, so the keyboard never opens.
                 OutlinedTextField(
-                    value = s.input, onValueChange = vm::onInput,
-                    modifier = Modifier.fillMaxWidth(),
+                    value = s.input, onValueChange = vm::onInput, readOnly = true,
+                    modifier = Modifier.weight(1f),
                     placeholder = { Text(stringResource(R.string.url_hint), color = Aks.Muted) },
                     singleLine = true,
                     // Links are always left-to-right, even in Arabic/Hebrew layouts.
@@ -115,11 +116,12 @@ fun HomeScreen(vm: MainViewModel, onDownload: () -> Unit) {
                         val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString()
                         if (text.isNullOrBlank()) vm.onClipboardEmpty() else vm.onInput(text)
                     },
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Aks.Card2, contentColor = Aks.Ink),
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.height(56.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Aks.Blue, contentColor = Color.White),
                 ) {
                     Icon(painterResource(R.drawable.ic_paste), null, Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.paste))
+                    Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.paste), maxLines = 1)
                 }
             }
             s.inputErrorKey?.let {
